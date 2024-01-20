@@ -1,0 +1,132 @@
+SELECT TOP 10 * FROM flodb.dbo.flo
+
+SELECT COLUMN_NAME AS DEGISKEN_ISIMLERI
+FROM flodb.INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'FLO'
+
+SELECT COUNT(*) AS SATIR_SAYISI , 
+       (SELECT COUNT(COLUMN_NAME) AS DEGISKEN_ISIMLERI
+    FROM flodb.INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'FLO') AS KOLON_SAYISI
+FROM flodb.dbo.flo 
+
+ALTER TABLE flo ADD customer_value_total AS (customer_value_total_ever_offline + customer_value_total_ever_online);
+ALTER TABLE flo ADD order_num_total AS (order_num_total_ever_online + order_num_total_ever_offline);
+SELECT * FROM flo
+ALTER TABLE FLO
+DROP COLUMN order_total;
+ALTER TABLE FLO
+DROP COLUMN customer_total;
+--Alışveriş kanallarındaki müşteri sayısının, ortalama alınan ürün sayısının ve ortalama harcamaların dağılımına bakınız.
+
+SELECT order_channel, 
+       COUNT(master_id) AS COUNT_MASTER_ID, 
+     ROUND(AVG(order_num_total), 0) AS AVG_ORDER_NUM_TOTAL, 
+     ROUND(AVG(customer_value_total), 0) AS AVG_CUSTOMER_VALUE_TOTAL 
+FROM flo
+GROUP BY order_channel;
+
+---En fazla kazancı getiren ilk 10 müşteriyi sıralayınız.
+SELECT TOP 10 master_id,customer_value_total
+FROM flo
+ORDER BY customer_value_total DESC;
+
+--En fazla siparişi veren ilk 10 müşteriyi sıralayınız.
+SELECT TOP 10 master_id,order_num_total
+FROM flo
+ORDER BY order_num_total DESC;
+
+--RFM METRİKLERİ--
+---Analysis Date : 2021-06-01
+
+-- customer_id, recency, frequnecy ve monetary değerlerinin yer aldığı yeni bir rfm adında tablo oluşturunuz.
+SELECT master_id AS CUSTOMER_ID,
+       DATEDIFF(DAY, last_order_date, '20210601') AS Receny,
+       DATEDIFF(MONTH,first_order_date,'20210601') AS Tenure,
+       order_num_total AS Frequency,
+       customer_value_total AS Monetary,
+       NULL RECENCY_SCORE,
+     NULL FREQUENCY_SCORE,
+     NULL MONETARY_SCORE
+INTO RFM_test1
+FROM flo;
+
+SELECT * FROM RFM_test1;
+EXEC sp_RENAME 'RFM_test1.Receny ', 'Recency', 'COLUMN'
+
+
+UPDATE RFM_test1 SET RECENCY_SCORE = 
+(SELECT SCORE FROM
+(SELECT A.*,
+        NTILE(5) OVER(ORDER BY Recency DESC) SCORE
+FROM RFM_test1 AS A
+) T 
+WHERE T.Customer_ID = RFM_test1.Customer_ID
+);
+
+UPDATE RFM_test1 SET FREQUENCY_SCORE = 
+(SELECT SCORE FROM
+(SELECT A.*,
+        NTILE(5) OVER(ORDER BY Frequency DESC) SCORE
+FROM RFM_test1 AS A
+) T 
+WHERE T.Customer_ID = RFM_test1.Customer_ID
+);
+
+UPDATE RFM_test1 SET MONETARY_SCORE = 
+(SELECT SCORE FROM
+(SELECT A.*,
+        NTILE(5) OVER(ORDER BY Monetary DESC) SCORE
+FROM RFM_test1 AS A
+) T 
+WHERE T.Customer_ID = RFM_test1.Customer_ID
+);
+
+
+ALTER TABLE RFM_test1 ADD RFM AS (CONVERT(VARCHAR,RECENCY_SCORE) + CONVERT(VARCHAR,FREQUENCY_SCORE) + CONVERT(VARCHAR, MONETARY_SCORE));
+
+--SEGMENT adında yeni bir kolon oluşturma
+ALTER TABLE RFM_test1 ADD SEGMENT VARCHAR(50);
+
+-- Hibernating sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='hibernating'
+WHERE RECENCY_SCORE LIKE '[1-2]%' AND FREQUENCY_SCORE LIKE '[1-2]%'
+
+
+-- at Risk sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='at_Risk'
+WHERE RECENCY_SCORE LIKE '[1-2]%' AND FREQUENCY_SCORE LIKE '[3-4]%'
+
+-- Can't Loose sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='cant_loose'
+WHERE RECENCY_SCORE LIKE '[1-2]%' AND FREQUENCY_SCORE LIKE '[5]%'
+
+-- About to Sleep sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='about_to_sleep'
+WHERE RECENCY_SCORE LIKE '[3]%' AND FREQUENCY_SCORE LIKE '[1-2]%'
+
+-- Need Attention sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='need_attention'
+WHERE RECENCY_SCORE LIKE '[3]%' AND FREQUENCY_SCORE LIKE '[3]%'
+
+-- Loyal Customers sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='loyal_customers'
+WHERE RECENCY_SCORE LIKE '[3-4]%' AND FREQUENCY_SCORE LIKE '[4-5]%'
+
+-- Promising sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='promising'
+WHERE RECENCY_SCORE LIKE '[4]%' AND FREQUENCY_SCORE LIKE '[1]%'
+
+-- New Customers sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='new_customers'
+WHERE RECENCY_SCORE LIKE '[5]%' AND FREQUENCY_SCORE LIKE '[1]%'
+
+-- Potential Loyalist sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='potential_loyalists'
+WHERE RECENCY_SCORE LIKE '[4-5]%' AND FREQUENCY_SCORE LIKE '[2-3]%'
+
+-- Champions sınıfının oluşturulması
+UPDATE RFM_test1 SET SEGMENT ='champions'
+WHERE RECENCY_SCORE LIKE '[5]%' AND FREQUENCY_SCORE LIKE '[4-5]%'
+
+SELECT * FROM RFM_test1;
