@@ -17,7 +17,7 @@ ALTER TABLE FLO
 DROP COLUMN order_total;
 ALTER TABLE FLO
 DROP COLUMN customer_total;
---Alışveriş kanallarındaki müşteri sayısının, ortalama alınan ürün sayısının ve ortalama harcamaların dağılımına bakınız.
+
 
 SELECT order_channel, 
        COUNT(master_id) AS COUNT_MASTER_ID, 
@@ -26,12 +26,11 @@ SELECT order_channel,
 FROM flo
 GROUP BY order_channel;
 
----En fazla kazancı getiren ilk 10 müşteriyi sıralayınız.
+
 SELECT TOP 10 master_id,customer_value_total
 FROM flo
 ORDER BY customer_value_total DESC;
 
---En fazla siparişi veren ilk 10 müşteriyi sıralayınız.
 SELECT TOP 10 master_id,order_num_total
 FROM flo
 ORDER BY order_num_total DESC;
